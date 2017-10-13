@@ -2,7 +2,7 @@
 """
 /***************************************************************************
  nhdPlusDownload
-                                 A QGIS plugin
+ A QGIS plugin
  Download NHD Plus Data for EPA H2O tool
                               -------------------
         begin                : 2017-10-03
@@ -32,7 +32,7 @@ from nhdplusdownloaddialog import nhdPlusDownloadDialog
 currentPath = os.path.dirname(__file__)
 sys.path.append(os.path.abspath(os.path.dirname(__file__) + os.sep + 'tools'))
 #import the custom functions
-import byBoundaryUnit
+import util
 
 class nhdPlusDownload:
 
@@ -79,8 +79,8 @@ class nhdPlusDownload:
 
     # run method that performs all the real work
     def run(self):
-        #set user database folder to save downloads into
-        dbFldr = QFileInfo(QgsApplication.qgisUserDbFilePath()).path()+'/0.0.3/'
+        # Set user database folder to save downloads into
+        db_dir = QFileInfo(QgsApplication.qgisUserDbFilePath()).path()+'0.0.3/'
         
         # Create the dialog (after translation) and keep reference
         self.dlg = nhdPlusDownloadDialog()
@@ -88,8 +88,7 @@ class nhdPlusDownload:
         layer_list = []
         for layer in self.iface.legendInterface().layers():
             layer_list.append(layer.name())
-            #QMessageBox.information(self.iface.mainWindow(), "Layer: ",layer.name())
-            #self.dlg.comboBox.Items.Insert(layer_list)
+        # Set dropdown in GUI to list those layers
         self.dlg.ui.comboBox1.addItems(layer_list)
         # show the dialog
         self.dlg.show()
@@ -97,13 +96,28 @@ class nhdPlusDownload:
         result = self.dlg.exec_()
         # See if OK was pressed
         if result == 1:
-            # disply selection
+            # Selection from GUI (layer legend)
             index = self.dlg.ui.comboBox1.currentIndex()
-            layerB = byBoundaryUnit.doIntersect(self.iface.legendInterface().layers()[index], str(dbFldr))
-            #layerA = self.iface.legendInterface().layers()[index]
-            #layer = self.dlg.ui.comboBox1.itemData(index)
-            #lyr = self.iface.addVectorLayer(layerB, "BU", "ogr")
-            if layerB.isValid():
-                QgsMapLayerRegistry.instance().addMapLayer(layerB)
-            layer2 = str(layer_list[index])
-            QMessageBox.information(self.iface.mainWindow(), "Layer: ","{}; ".format(layer2))
+            #nhdPlus dataset
+            data_source = db_dir + "data/BoundaryUnit.shp"
+            # Get layer objects
+            lyrB = util.getVectorLayerByFile(data_source)
+            lyrA = util.getVectorLayerByName(layer_list[index])
+            # Select Layer A where it intersects Layer B
+            util.SelectLayerByLocation(lyrB, lyrA, "ADD")
+            # Get needed attributes from selection
+            ID_List = util.fieldToList(lyrB, 1, True)
+            d_List = util.fieldToList(lyrB, 0, True)
+            # Get requests
+            requests = util.getNHDrequest(ID_List, d_List)
+            # Download requests
+            # requests = [(request1, [file1, file2]), (request2, [file1, file2])]
+            for request in requests:
+                for f in request[1]:
+                    QMessageBox.information(self.iface.mainWindow(), "Request:", "Request: {}; loc: {}; file: {}".format(request[0], db_dir, f))
+                    util.HTTP_download(request[0], db_dir, f)
+                    # Unzip dowloads
+                    util.WinZip_unzip(db_dir, f)
+                    # Pull unzipped file into database?
+
+            #QMessageBox.information(self.iface.mainWindow(), "Lists:", "{}; {}; ".format(ID_List, drainList))
